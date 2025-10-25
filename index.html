@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Cute Photobooth</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&family=Playfair+Display:wght@600&display=swap');
+
+        :root {
+            --bg: #fff7f9;
+            --panel: #fff;
+            --accent: #ff9bb4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            gap: 20px;
+            padding: 24px;
+            background: var(--bg);
+            font-family: Inter, system-ui;
+        }
+
+        .left {
+            flex: 1;
+            background: var(--panel);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+        }
+
+        video {
+            width: 80%;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+            transform: scaleX(-1);
+        }
+
+        #countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 100px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 15px #000;
+            display: none;
+        }
+
+        .viewer {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 14px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+
+        .btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 24px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn.primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn.secondary {
+            background: #eee;
+        }
+
+        .right {
+            width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 12px;
+            padding: 14px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+        }
+
+        .palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+        }
+
+        .chip.active {
+            border-color: var(--accent);
+        }
+
+        .filter-chip {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #fff;
+            overflow: hidden;
+        }
+
+        .strip {
+            background: #000;
+            border-radius: 12px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            height: 650px;
+        }
+
+        .strip-slot {
+            width: 90%;
+            height: 30%;
+            background: #ccc;
+            border-radius: 8px;
+            overflow: hidden;
+            transform: scaleX(-1);
+        }
+
+        .strip-slot img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .strip-caption {
+            margin-top: auto;
+            color: #fff;
+            font-family: 'Playfair Display', serif;
+            font-size: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="left">
+        <div class="viewer">
+            <video id="video" autoplay playsinline></video>
+            <div id="countdown"></div>
+        </div>
+        <div class="controls">
+            <button id="capture" class="btn primary">📸</button>
+            <button id="retake" class="btn secondary">🔁</button>
+            <button id="download" class="btn secondary">💾</button>
+        </div>
+    </div>
+
+    <div class="right">
+        <div class="panel">
+            <h3>Frame</h3>
+            <div class="palette" id="framePalette"></div>
+        </div>
+        <div class="panel">
+            <h3>Filter</h3>
+            <div class="palette" id="filterPalette"></div>
+        </div>
+        <div class="panel">
+            <div class="strip" id="photoStrip">
+                <div class="strip-slot"><img id="slot0"></div>
+                <div class="strip-slot"><img id="slot1"></div>
+                <div class="strip-slot"><img id="slot2"></div>
+                <div class="strip-caption">photobooth</div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const captureBtn = document.getElementById('capture');
+        const retakeBtn = document.getElementById('retake');
+        const downloadBtn = document.getElementById('download');
+        const countdownEl = document.getElementById('countdown');
+        const strip = document.getElementById('photoStrip');
+        const slots = [slot0, slot1, slot2];
+        let captured = [];
+        let activeFrame = 'black';
+        let activeFilter = 'none';
+
+        async function startCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+        }
+        startCamera();
+
+        const frames = [
+            { id: 'black', bg: '#000', label: 'Black' },
+            { id: 'white', bg: '#fff', label: 'White' },
+            { id: 'pink', bg: '#ffc4d5', label: 'Pink' },
+            { id: 'blue', bg: '#c5e5ff', label: 'Blue' },
+            { id: 'yellow', bg: '#fff5a3', label: 'Yellow' },
+            { id: 'checker', bg: 'repeating-linear-gradient(45deg,#000 0 15px,#fff 15px 30px)', label: 'Checker' },
+        ];
+        frames.forEach(f => {
+            const el = document.createElement('div');
+            el.className = 'chip';
+            el.style.background = f.bg;
+            el.title = f.label;
+            el.onclick = () => { activeFrame = f.id; applyFramePreview(); updateFrameActive(); };
+            framePalette.appendChild(el);
+        });
+
+        function applyFramePreview() {
+            const f = frames.find(x => x.id === activeFrame);
+            strip.style.background = f.bg;
+        }
+        applyFramePreview();
+
+        const filters = [
+            { id: 'none', css: 'none' },
+            { id: 'bw', css: 'grayscale(100%) contrast(110%)' },
+            { id: 'sepia', css: 'sepia(70%) contrast(110%)' },
+            { id: 'warm', css: 'brightness(105%) sepia(20%) saturate(120%)' },
+        ];
+        filters.forEach(f => {
+            const el = document.createElement('div');
+            el.className = 'filter-chip';
+            el.style.background = '#999';
+            el.style.filter = f.css;
+            el.onclick = () => { activeFilter = f.id; video.style.filter = f.css; updateFilterActive(); };
+            filterPalette.appendChild(el);
+        });
+
+        async function showCountdown() {
+            for (let i = 3; i > 0; i--) {
+                countdownEl.style.display = 'block';
+                countdownEl.innerText = i;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            countdownEl.style.display = 'none';
+        }
+
+        // ✅ FIX: hasil capture tidak mirror & proporsinya benar
+        captureBtn.onclick = async () => {
+            if (captured.length >= 3) { alert('Sudah 3 foto'); return; }
+            await showCountdown();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            ctx.save();
+            ctx.translate(canvas.width, 0); // geser ke kanan
+            ctx.scale(-1, 1); // mirror sekali (untuk balikin ke arah normal)
+            ctx.filter = video.style.filter;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            const imgData = canvas.toDataURL('image/png');
+            captured.push(imgData);
+            slots[captured.length - 1].src = imgData;
+        };
+
+        retakeBtn.onclick = () => { captured = []; slots.forEach(s => s.src = ''); };
+
+        // ✅ FIX: download tidak mirror
+        downloadBtn.onclick = async () => {
+            if (captured.length < 3) { alert('Ambil 3 foto dulu'); return; }
+            const W = 900, H = 2400, margin = 80, gap = 60;
+            const photoH = (H - margin * 2 - gap * 2) / 3;
+            const out = document.createElement('canvas');
+            out.width = W; out.height = H;
+            const octx = out.getContext('2d');
+            const f = frames.find(x => x.id === activeFrame);
+            octx.fillStyle = f.bg;
+            octx.fillRect(0, 0, W, H);
+
+            for (let i = 0; i < 3; i++) {
+                await new Promise(res => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const aspect = img.width / img.height;
+                        const photoW = W - 2 * margin;
+                        const trueH = photoW / aspect;
+                        const y = margin + i * (photoH + gap) + (photoH - trueH) / 2;
+                        // no mirror here
+                        octx.drawImage(img, margin, y, photoW, trueH);
+                        res();
+                    };
+                    img.src = captured[i];
+                });
+            }
+
+            octx.font = "bold 60px 'Playfair Display'";
+            octx.fillStyle = "#fff";
+            octx.textAlign = "center";
+            octx.fillText("Photobooth", W / 2, H - 60);
+
+            const link = document.createElement('a');
+            link.download = 'photobooth_strip.png';
+            link.href = out.toDataURL('image/png');
+            link.click();
+        };
+    </script>
+
+</body>
+
+</html>
